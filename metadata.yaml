@@ -1,18 +1,19 @@
 name: astrbot_plugin_bika
-display_name: 哔咔漫画（个人自托管）
-desc: 【成人向 / 18+，仅限个人自托管，不提交插件市场】哔咔漫画（PicACG）私人使用插件：日/周/月排行榜与定时推送、搜索、详情、章节、收藏、签到，按话下载并发送到私人会话。
-short_desc: 成人向自托管插件（不进市场）
-version: 1.1.1
+display_name: 哔咔漫画
+desc: 哔咔漫画插件 - 排行榜/搜索/详情/章节/收藏/签到，支持日/周/月榜定时推送，按话下载并发送到群聊或私聊，打包支持图片/zip/pdf/长图
+short_desc: 哔咔排行榜、收藏、签到与整话下载
+version: 1.1.2
 author: CYHY-MK
 repo: https://github.com/CYHY-MK/astrbot_plugin_bika
 astrbot_version: ">=4.10,<5"
 tags:
   - 哔咔
+  - 漫画
   - picacomic
   - 排行榜
   - 收藏
   - 签到
-  - 自托管
+  - 下载
 support_platforms:
   - aiocqhttp
   - qq_official
