@@ -213,7 +213,8 @@
   "allow_group": {
     "description": "允许群聊使用",
     "type": "bool",
-    "default": true
+    "default": false,
+    "hint": "强烈建议保持关闭。本插件对接成人向平台，仅应在自己的私聊中使用，避免内容进入公开群聊。"
   },
   "allow_private": {
     "description": "允许私聊使用",

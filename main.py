@@ -241,7 +241,7 @@ class BikaPlugin(Star):
 
     def _permission_error(self, event: AstrMessageEvent) -> str | None:
         is_group = bool(event.get_group_id())
-        if is_group and not bool(self._cfg("allow_group", True)):
+        if is_group and not bool(self._cfg("allow_group", False)):
             return "❌ 已关闭群聊使用，请在私聊中使用。"
         if not is_group and not bool(self._cfg("allow_private", True)):
             return "❌ 已关闭私聊使用，请在群聊中使用。"
