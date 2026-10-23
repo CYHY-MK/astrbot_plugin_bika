@@ -88,7 +88,8 @@
 | `cache_days` | 7 | 缓存保留天数，0 表示不清理 |
 
 `push_targets` 里的 `unified_msg_origin`（umo）可以直接用 `/bika 状态` 查到，
-例如 `二群=default:GroupMessage:123456789`。定时推送会发到列表里的**所有**目标。
+例如 `二群=<BOT名>:GroupMessage:123456789`（前缀因部署而异，以状态里显示的为准）。
+定时推送会发到列表里的**所有**目标。
 
 ---
 
@@ -133,7 +134,7 @@
 **定时推送怎么用**
 
 1. 在目标群里发一次 `/bika 状态`，复制返回的「会话」那一行；
-2. 填进配置 `push_targets`，例如 `二群=default:GroupMessage:123456789`；
+2. 填进配置 `push_targets`，例如 `二群=<BOT名>:GroupMessage:123456789`；
 3. 按需设置 `push_daily_time` / `push_weekly_day` / `push_monthly_day`；
 4. 发 `/bika 推送测试 周` 验证通不通。
 

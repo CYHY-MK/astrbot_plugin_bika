@@ -690,8 +690,8 @@ class BikaPlugin(Star):
                     Comp.Plain(
                         "❌ 还没有配置推送目标。\n"
                         "请在插件配置的 push_targets 里添加，例如：\n"
-                        "二群=default:GroupMessage:123456789\n"
-                        "（发送 /bika 状态 可以查看当前会话的 umo）"
+                        "二群=<BOT名>:GroupMessage:123456789\n"
+                        "（发送 /bika 状态 可以查看当前会话的 umo，直接复制即可）"
                     )
                 ],
             )

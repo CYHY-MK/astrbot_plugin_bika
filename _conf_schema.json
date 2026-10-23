@@ -224,7 +224,7 @@
     "description": "推送目标",
     "type": "list",
     "default": [],
-    "hint": "格式：别名=unified_msg_origin，例如 二群=default:GroupMessage:123456789。用 /bika 状态 可查看当前会话的 umo。"
+    "hint": "格式：别名=unified_msg_origin，例如 二群=<BOT名>:GroupMessage:123456789。发 /bika 状态 可直接查看当前会话的 umo 并复制。"
   },
   "cache_days": {
     "description": "缓存保留天数",
