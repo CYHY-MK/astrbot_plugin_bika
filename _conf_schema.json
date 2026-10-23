@@ -1,0 +1,235 @@
+{
+  "account": {
+    "description": "哔咔账号",
+    "type": "string",
+    "default": "",
+    "hint": "哔咔（manhuabika.com）的登录账号，通常是邮箱或站内用户名"
+  },
+  "password": {
+    "description": "哔咔密码",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "hint": "仅用于登录换取 token，插件不会在聊天中回显"
+  },
+  "api_base": {
+    "description": "接口线路",
+    "type": "string",
+    "default": "https://picaapi.go2778.com",
+    "hint": "默认走哔咔网页版主线路。连不上时会自动切到备用线路。"
+  },
+  "proxy": {
+    "description": "代理地址",
+    "type": "string",
+    "default": "",
+    "hint": "形如 http://127.0.0.1:7897。直连被 Cloudflare 拦截或网络不通时填写。"
+  },
+  "image_host": {
+    "description": "图片线路",
+    "type": "string",
+    "default": "镜像",
+    "options": ["镜像", "直连"],
+    "labels": ["镜像（推荐）", "直连"],
+    "hint": "镜像会把 storage-*.picacomic.com 换成当前线路的域名，大陆网络更稳定"
+  },
+  "image_quality": {
+    "description": "图片质量",
+    "type": "string",
+    "default": "medium",
+    "options": ["medium", "original", "low"],
+    "labels": ["中等（推荐）", "原图", "低清"],
+    "hint": "原图体积大、下载慢，中等一般足够阅读"
+  },
+  "pack_format": {
+    "description": "默认发送格式",
+    "type": "string",
+    "default": "图片",
+    "options": ["图片", "zip", "pdf", "长图"],
+    "labels": ["逐张图片", "ZIP 压缩包", "PDF", "长图"],
+    "hint": "可在指令中用最后一个参数临时覆盖"
+  },
+  "send_batch": {
+    "description": "每批发送图片数",
+    "type": "int",
+    "default": 3,
+    "slider": {"min": 1, "max": 10, "step": 1},
+    "hint": "逐张图片模式下，一条消息里包含几张图片；QQ 风控严时建议 1~3"
+  },
+  "send_interval": {
+    "description": "消息发送间隔（秒）",
+    "type": "float",
+    "default": 1.2,
+    "hint": "相邻两条消息的最小间隔。出现「QQ 未返回消息回执 / retcode=100」时调大到 2~3 秒"
+  },
+  "max_image_mb": {
+    "description": "单张图片上限（MB）",
+    "type": "int",
+    "default": 3,
+    "hint": "超过后会压缩再发送，避免聊天平台拒收"
+  },
+  "max_send_mb": {
+    "description": "单个文件上限（MB）",
+    "type": "int",
+    "default": 50,
+    "hint": "ZIP / PDF 超过该体积会跳过发送，防止机器人上传超时"
+  },
+  "max_images_per_task": {
+    "description": "单次下载图片上限",
+    "type": "int",
+    "default": 200,
+    "hint": "一次指令最多下载多少张图片，避免误发整本长篇"
+  },
+  "max_chapters_per_task": {
+    "description": "单次下载章节上限",
+    "type": "int",
+    "default": 3,
+    "hint": "一次指令最多下载几话"
+  },
+  "concurrency": {
+    "description": "下载并发数",
+    "type": "int",
+    "default": 6,
+    "slider": {"min": 1, "max": 16, "step": 1},
+    "hint": "并发过高容易被风控，建议 4~8"
+  },
+  "compress_send": {
+    "description": "发送前压缩图片",
+    "type": "bool",
+    "default": true,
+    "hint": "仅在图片超过单张上限或尺寸过大时压缩"
+  },
+  "rank_size": {
+    "description": "排行榜条数",
+    "type": "int",
+    "default": 10,
+    "slider": {"min": 1, "max": 30, "step": 1}
+  },
+  "rank_collage": {
+    "description": "排行榜封面拼图",
+    "type": "bool",
+    "default": true,
+    "hint": "把前 10 名封面拼成一张图一起发送（需要 Pillow）"
+  },
+  "rank_push_size": {
+    "description": "定时推送条数",
+    "type": "int",
+    "default": 10,
+    "slider": {"min": 1, "max": 30, "step": 1},
+    "hint": "定时推送时榜单展示前几名"
+  },
+  "push_daily_enable": {
+    "description": "每日推送日榜",
+    "type": "bool",
+    "default": true,
+    "hint": "每天在「日榜推送时间」推送一次日榜（需先配置 push_targets）"
+  },
+  "push_daily_time": {
+    "description": "日榜推送时间",
+    "type": "string",
+    "default": "09:00",
+    "hint": "24 小时制 HH:MM，例如 09:00"
+  },
+  "push_weekly_enable": {
+    "description": "每周推送周榜",
+    "type": "bool",
+    "default": true
+  },
+  "push_weekly_time": {
+    "description": "周榜推送时间",
+    "type": "string",
+    "default": "09:00",
+    "hint": "24 小时制 HH:MM"
+  },
+  "push_weekly_day": {
+    "description": "周榜推送日",
+    "type": "int",
+    "default": 1,
+    "slider": {"min": 1, "max": 7, "step": 1},
+    "hint": "1=周一 … 7=周日"
+  },
+  "push_monthly_enable": {
+    "description": "每月推送月榜",
+    "type": "bool",
+    "default": true
+  },
+  "push_monthly_time": {
+    "description": "月榜推送时间",
+    "type": "string",
+    "default": "09:00",
+    "hint": "24 小时制 HH:MM"
+  },
+  "push_monthly_day": {
+    "description": "月榜推送日",
+    "type": "int",
+    "default": 1,
+    "slider": {"min": 1, "max": 28, "step": 1},
+    "hint": "每月几号推送（建议 1~28，避免小月没有该日期）"
+  },
+  "push_max_delay_hours": {
+    "description": "错过推送的补发窗口（小时）",
+    "type": "int",
+    "default": 6,
+    "hint": "如果到点时机器人没运行，在窗口内启动会补发；超过窗口则跳过本次"
+  },
+  "timeout": {
+    "description": "接口超时（秒）",
+    "type": "int",
+    "default": 30
+  },
+  "max_retry": {
+    "description": "失败重试次数",
+    "type": "int",
+    "default": 2
+  },
+  "progress_notify": {
+    "description": "下载进度提示",
+    "type": "bool",
+    "default": true
+  },
+  "progress_min_pages": {
+    "description": "进度提示页数阈值",
+    "type": "int",
+    "default": 30,
+    "hint": "本章图片少于该数量时不提示进度，避免刷屏"
+  },
+  "progress_step_pct": {
+    "description": "进度提示间隔（%）",
+    "type": "int",
+    "default": 25,
+    "slider": {"min": 5, "max": 50, "step": 5}
+  },
+  "admin_only": {
+    "description": "仅管理员可用",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后只有 AstrBot 管理员或 admin_ids 中的用户可以触发指令"
+  },
+  "admin_ids": {
+    "description": "管理员 ID 列表",
+    "type": "string",
+    "default": "",
+    "hint": "多个用英文逗号分隔，填发送者的 QQ / 用户 ID"
+  },
+  "allow_group": {
+    "description": "允许群聊使用",
+    "type": "bool",
+    "default": true
+  },
+  "allow_private": {
+    "description": "允许私聊使用",
+    "type": "bool",
+    "default": true
+  },
+  "push_targets": {
+    "description": "推送目标",
+    "type": "list",
+    "default": [],
+    "hint": "格式：别名=unified_msg_origin，例如 二群=default:GroupMessage:123456789。用 /bika 状态 可查看当前会话的 umo。"
+  },
+  "cache_days": {
+    "description": "缓存保留天数",
+    "type": "int",
+    "default": 7,
+    "hint": "超过天数的下载图片与打包文件会在插件加载时清理，0 表示不清理"
+  }
+}

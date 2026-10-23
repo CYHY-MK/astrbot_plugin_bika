@@ -1,0 +1,27 @@
+name: astrbot_plugin_bika
+display_name: 哔咔漫画（排行榜 / 下载）
+desc: 哔咔漫画插件：日/周/月排行榜与定时推送、搜索、详情、章节、收藏、签到，按话下载漫画图片并发送到当前群聊或私聊，支持逐张图片、ZIP、PDF、长图四种打包方式。
+short_desc: 哔咔排行榜/收藏/签到/下载发送
+version: 1.1.0
+author: CYHY-MK
+repo: https://github.com/CYHY-MK/astrbot_plugin_bika
+astrbot_version: ">=4.10,<5"
+tags:
+  - 哔咔
+  - 漫画
+  - picacomic
+  - 排行榜
+  - 下载
+  - 收藏
+  - 签到
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook
+  - telegram
+  - discord
+  - lark
+  - dingtalk
+  - wecom
+  - satori
+  - kook
