@@ -1,8 +1,8 @@
 name: astrbot_plugin_bika
 display_name: 哔咔漫画
-desc: 哔咔漫画插件 - 排行榜/搜索/详情/章节/收藏/签到，支持日/周/月榜定时推送，按话下载并发送到群聊或私聊，打包支持图片/zip/pdf/长图
+desc: 哔咔漫画插件 - 排行榜/搜索/详情/章节/收藏/签到/整话下载，支持日/周/月榜定时推送，打包支持图片/zip/pdf/长图
 short_desc: 哔咔排行榜、收藏、签到与整话下载
-version: 1.1.2
+version: 1.1.3
 author: CYHY-MK
 repo: https://github.com/CYHY-MK/astrbot_plugin_bika
 astrbot_version: ">=4.10,<5"
