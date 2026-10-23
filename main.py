@@ -25,10 +25,12 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star
 
 from .core.client import BikaAuthError, BikaClient, BikaError, BikaNetworkError
-from .core.constants import PACK_FORMATS, RANK_LABELS, RANK_TYPES
+from .core.constants import PACK_FORMATS, RANK_LABELS, RANK_TYPES, SORTS
 from .core.downloader import ChapterDownloader, ChapterResult
 from .core.formatter import (
     comic_title,
+    format_categories,
+    format_category_comics,
     format_detail,
     format_episodes,
     format_favourites,
@@ -57,6 +59,8 @@ HELP_TEXT = """📚 哔咔漫画插件 · 指令一览
 
 /bika 排行 [日|周|月] [数量]
     查看排行榜（默认日榜前 10）
+/bika 分区 [序号|名称] [排序] [页码]
+    浏览分区；不带参数时列出全部分区
 /bika 搜索 <关键词> [页码]
     搜索漫画
 /bika 详情 <漫画ID|本页序号>
@@ -83,6 +87,8 @@ HELP_TEXT = """📚 哔咔漫画插件 · 指令一览
 
 示例：
     /bika 排行 周
+    /bika 分区
+    /bika 分区 長篇 最多爱心
     /bika 搜索 女仆
     /bika 下载 3 1-2 zip
     /bika 收藏 1
@@ -91,7 +97,7 @@ HELP_TEXT = """📚 哔咔漫画插件 · 指令一览
 
 
 class BikaPlugin(Star):
-    """哔咔漫画：排行榜、搜索、下载与发送。"""
+    """哔咔漫画：排行榜、分区、搜索、下载与发送。"""
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -116,6 +122,8 @@ class BikaPlugin(Star):
         self._saved_token = ""
         # 每个会话最近一次排行榜 / 搜索结果，用于「序号」引用
         self._last_results: dict[str, dict] = {}
+        # 每个会话最近一次分区列表，用于「/bika 分区 序号」引用
+        self._last_categories: dict[str, tuple[float, list[dict]]] = {}
         self._cleanup_task: asyncio.Task | None = None
         self._bg_tasks: set[asyncio.Task] = set()
         self._last_send_at: float = 0.0
@@ -441,6 +449,8 @@ class BikaPlugin(Star):
         try:
             if sub in {"排行", "rank", "top"}:
                 await self._cmd_rank(event, client, rest)
+            elif sub in {"分区", "category", "categories", "分区浏览"}:
+                await self._cmd_categories(event, client, rest)
             elif sub in {"搜索", "search"}:
                 await self._cmd_search(event, client, rest)
             elif sub in {"详情", "info", "漫画"}:
@@ -538,6 +548,87 @@ class BikaPlugin(Star):
                     logger.warning("生成排行榜封面拼图失败：%s", exc)
 
         await self._send(event, "", [Comp.Plain(text)])
+
+    # ==================================================================
+    # 分区浏览
+    # ==================================================================
+    async def _cmd_categories(
+        self, event: AstrMessageEvent, client: BikaClient, args: list[str]
+    ) -> None:
+        categories = await client.categories()
+        if not categories:
+            await self._send(event, "", [Comp.Plain("📂 暂时没有拿到分区数据。")])
+            return
+
+        # 无参数：列出全部分区，并缓存供「序号」引用
+        if not args:
+            self._last_categories[event.unified_msg_origin] = (
+                time.time(),
+                categories,
+            )
+            await self._send(event, "", [Comp.Plain(format_categories(categories))])
+            return
+
+        category = self._resolve_category(event, categories, args[0])
+        if category is None:
+            return
+
+        sort = "ua"
+        page = 1
+        sort_values = set(SORTS.values())
+        for arg in args[1:]:
+            key = arg.lower()
+            if key in SORTS:
+                sort = SORTS[key]
+            elif key in sort_values:
+                sort = key
+            elif arg.isdigit():
+                page = max(1, int(arg))
+
+        result = await client.comics(category, page=page, sort=sort)
+        self._remember(event, "category", result["docs"])
+        sort_label = next((k for k, v in SORTS.items() if v == sort), sort)
+        await self._send(
+            event,
+            "",
+            [Comp.Plain(format_category_comics(result, category, sort_label))],
+        )
+
+    def _resolve_category(
+        self,
+        event: AstrMessageEvent,
+        categories: list[dict],
+        token: str,
+    ) -> str | None:
+        """把「序号」或「名称」解析成分区标题；失败时已回复错误信息。"""
+        token = (token or "").strip()
+        if not token:
+            return None
+
+        if token.isdigit():
+            cached = self._last_categories.get(event.unified_msg_origin)
+            if not cached or time.time() - cached[0] > 3600:
+                raise BikaError(
+                    "分区序号需要先查看列表",
+                    hint="先发送 /bika 分区 获取分区编号，再发送 /bika 分区 <序号>",
+                )
+            docs = cached[1]
+            index = int(token) - 1
+            if not 0 <= index < len(docs):
+                raise BikaError(f"分区序号超出范围（共 {len(docs)} 个）")
+            return str(docs[index].get("title") or "")
+
+        lowered = token.lower()
+        exact = [c for c in categories if str(c.get("title") or "").lower() == lowered]
+        if exact:
+            return str(exact[0].get("title") or "")
+        fuzzy = [c for c in categories if lowered in str(c.get("title") or "").lower()]
+        if fuzzy:
+            return str(fuzzy[0].get("title") or "")
+        raise BikaError(
+            f"没有找到分区「{token}」",
+            hint="发送 /bika 分区 查看全部分区名称",
+        )
 
     # ==================================================================
     # 搜索

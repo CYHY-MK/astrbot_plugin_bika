@@ -154,3 +154,41 @@ def format_favourites(result: dict) -> str:
     lines.append("")
     lines.append("💡 回复「/bika 详情 序号」查看详情，「/bika 我的收藏 页码」翻页")
     return "\n".join(lines)
+
+
+def format_categories(categories: list[dict]) -> str:
+    """分区列表文本。"""
+    if not categories:
+        return "📂 暂时没有拿到分区数据。"
+    lines = [f"📂 哔咔分区（共 {len(categories)} 个）"]
+    for index, cat in enumerate(categories, start=1):
+        title = str(cat.get("title") or cat.get("_id") or "").strip()
+        if title:
+            lines.append(f"{index}. {title}")
+    lines.append("")
+    lines.append("💡 /bika 分区 <序号|名称> [排序] [页码]")
+    lines.append("   排序：默认 / 新到旧 / 旧到新 / 最多爱心 / 最多指名")
+    lines.append("   例：/bika 分区 長篇 最多爱心")
+    return "\n".join(lines)
+
+
+def format_category_comics(result: dict, category: str, sort_label: str) -> str:
+    """分区内的漫画列表文本。"""
+    docs = result.get("docs") or []
+    total = result.get("total") or len(docs)
+    page = result.get("page") or 1
+    pages = result.get("pages") or 1
+    if not docs:
+        return (
+            f"📂 「{category}」暂无内容（可能是官方/活动分区，或该页没有数据）。\n"
+            "可以试试 /bika 分区 换个分区。"
+        )
+    lines = [f"📂 {category} · {sort_label}（共 {total} 部，第 {page}/{pages} 页）"]
+    offset = (page - 1) * len(docs)
+    for index, comic in enumerate(docs, start=1):
+        lines.append(f"{offset + index}. {clamp_text(comic_title(comic), 44)}")
+        author = clamp_text(comic_author(comic), 24) or "未知作者"
+        lines.append(f"    👤 {author} ｜ 👁 {human_count(comic_views(comic))}")
+    lines.append("")
+    lines.append(f"💡 /bika 详情 序号 查看详情；/bika 分区 {category} {sort_label} 2 翻页")
+    return "\n".join(lines)

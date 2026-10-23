@@ -332,6 +332,23 @@ class BikaClient:
         )
         return self._extract_comic_list(result)
 
+    async def comics(self, category: str = "", page: int = 1, sort: str = "ua") -> dict:
+        """按分区浏览漫画，返回 ``{docs, total, pages, page}``。
+
+        接口：``GET /comics?c=<分区>&s=<排序>&page=<页码>``。
+        分区名是中文时会被 URL 编码，签名使用编码后的路径（与网页版一致）。
+        """
+        from urllib.parse import urlencode
+
+        params: list[tuple[str, str]] = [("page", str(max(1, page)))]
+        if category:
+            params.append(("c", category))
+        if sort:
+            params.append(("s", sort))
+        query = urlencode(params)
+        result = await self._request("GET", f"comics?{query}")
+        return self._extract_comic_list(result)
+
     async def comic(self, comic_id: str) -> dict:
         result = await self._request("GET", f"comics/{comic_id}")
         comic = (result.get("data") or {}).get("comic") or {}
