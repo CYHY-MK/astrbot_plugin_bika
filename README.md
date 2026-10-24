@@ -14,6 +14,7 @@
 - 📖 **详情 / 📚 章节**：作者、分类、标签、页数、章节列表
 - ⬇️ **下载**：按话下载（`1` / `1-3` / `最新3` / `all`），发送到群聊或私聊
 - 📦 **打包**：逐张图片 / ZIP / PDF / 长图
+- 🔒 **加密**：ZIP（AES-256）/ PDF（打开密码），密码随消息提示
 - 💗 **收藏**：收藏 / 取消收藏、收藏夹翻页
 - ✅ **签到**：每日签到
 
@@ -24,7 +25,7 @@
 3. 在插件配置里填写哔咔账号与密码；
 4. 发送 `/bika 帮助` 验证。
 
-依赖：`aiohttp`（AstrBot 自带）、`Pillow`（PDF / 长图 / 封面拼图）。
+依赖：`aiohttp`（AstrBot 自带）、`Pillow`（PDF / 长图 / 封面拼图）、`pyzipper`（ZIP 加密）、`pypdf`（PDF 加密）。
 
 ## 配置
 
@@ -36,6 +37,9 @@
 | `image_host` | 镜像 | 图片域名换成镜像线路，大陆更稳 |
 | `image_quality` | `medium` | `medium` / `original` / `low` |
 | `pack_format` | 图片 | 图片 / zip / pdf / 长图 |
+| `pack_password` | 空 | 非空时 ZIP 加密 / PDF 加打开密码 |
+| `pack_password_random` / `pack_password_length` | 关 / 6 | 每个文件随机密码 |
+| `pack_password_notify` | 开 | 在消息里提示密码 |
 | `send_batch` / `send_interval` | 3 / 1.2 | 发送节流，降低 QQ 风控 |
 | `push_targets` | `[]` | 定时推送目标，格式 `别名=unified_msg_origin` |
 | `push_daily_*` / `push_weekly_*` / `push_monthly_*` | 开 / 09:00 | 日/周/月榜推送开关与时间 |
@@ -67,7 +71,19 @@
 /bika 分区 長篇 最多爱心 2
 /bika 详情 3
 /bika 下载 3 1-2 zip
+/bika 下载 3 1 zip #abcd12     ← 临时密码
 ```
+
+**加密说明**：`pack_password` 非空（或指令末尾加 `#密码`）时，
+ZIP 使用 AES-256 加密（需要 7-Zip / WinRAR / Bandizip 等支持 AES 的解压工具打开），
+PDF 加打开密码；密码会随文件消息一起提示。图片 / 长图无法加密。
+
+**文件上传失败？** QQ 的 `highway upload transport failed / peer idle` 属于文件上传通道超时，
+常见于内容风控或网络抖动。可以：
+
+1. 改用 `zip` 并设置密码（加密后内容不可扫描，成功率更高）；
+2. 调小 `max_send_mb`、把大文件拆成多话分批发送；
+3. 重试一次；仍失败则检查 NapCat / QQ 版本与网络。
 
 ## 说明
 

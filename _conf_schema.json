@@ -48,6 +48,31 @@
     "labels": ["逐张图片", "ZIP 压缩包", "PDF", "长图"],
     "hint": "可在指令中用最后一个参数临时覆盖"
   },
+  "pack_password": {
+    "description": "打包密码",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "hint": "非空时 ZIP 用 AES 加密、PDF 加打开密码；留空则不加密码。只对 zip/pdf 生效。"
+  },
+  "pack_password_random": {
+    "description": "每次随机密码",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后每个文件随机生成密码（优先于上面的固定密码）"
+  },
+  "pack_password_length": {
+    "description": "随机密码长度",
+    "type": "int",
+    "default": 6,
+    "slider": {"min": 4, "max": 16, "step": 1}
+  },
+  "pack_password_notify": {
+    "description": "消息中提示密码",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后只提示「已加密」，不直接显示密码"
+  },
   "send_batch": {
     "description": "每批发送图片数",
     "type": "int",

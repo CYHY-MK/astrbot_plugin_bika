@@ -2,16 +2,22 @@
 
 Pillow 采用延迟导入：没装 Pillow 时插件仍能正常启动，
 只是 PDF / 长图 / 拼图功能会提示不可用。
+
+ZIP 加密依赖 pyzipper（AES），PDF 加密依赖 pypdf + cryptography；
+两者都按需导入，缺失时自动退化为不加密并在消息里说明。
 """
 
 from __future__ import annotations
 
 import io
 import os
+import secrets
 import zipfile
 from pathlib import Path
 
 from astrbot.api import logger
+
+_PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 _FONT_CANDIDATES = (
     r"C:\Windows\Fonts\msyh.ttc",
@@ -54,30 +60,112 @@ def _find_font(size: int):
 
 
 # ----------------------------------------------------------------------
+# 加密能力探测 / 随机密码
+# ----------------------------------------------------------------------
+def _load_pyzipper():
+    try:
+        import pyzipper
+
+        return pyzipper
+    except Exception:  # pragma: no cover - 依赖缺失
+        return None
+
+
+def zip_encryption_available() -> bool:
+    return _load_pyzipper() is not None
+
+
+def pdf_encryption_available() -> bool:
+    try:
+        import pypdf  # noqa: F401
+        from cryptography.hazmat.primitives.ciphers import Cipher  # noqa: F401
+
+        return True
+    except Exception:  # pragma: no cover - 依赖缺失
+        return False
+
+
+def random_password(length: int = 6) -> str:
+    """生成易读的随机密码（去掉 0/1/I/L/O 等易混字符）。"""
+    length = max(4, min(int(length or 6), 24))
+    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(length))
+
+
+# ----------------------------------------------------------------------
 # ZIP
 # ----------------------------------------------------------------------
-def zip_images(paths: list[Path], out_path: Path, arc_prefix: str = "") -> Path:
-    """把图片打成 ZIP（存储压缩，图片本身已压缩，再压缩收益很低）。"""
+def zip_images(
+    paths: list[Path],
+    out_path: Path,
+    arc_prefix: str = "",
+    password: str = "",
+) -> Path:
+    """把图片打成 ZIP（存储压缩）。
+
+    Args:
+        password: 非空且安装了 pyzipper 时使用 AES-256 加密。
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    pyzipper = _load_pyzipper() if password else None
+
+    if pyzipper is not None:
+        with pyzipper.AESZipFile(
+            out_path,
+            "w",
+            compression=zipfile.ZIP_STORED,
+            encryption=pyzipper.WZ_AES,
+        ) as zf:
+            zf.setpassword(password.encode("utf-8"))
+            _write_zip_entries(zf, paths, arc_prefix)
+        return out_path
+
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_STORED) as zf:
-        total = 0
-        for path in paths:
-            size = path.stat().st_size
-            # ZIP32 单文件 / 总量限制
-            if total + size > 3_800_000_000:
-                logger.warning("ZIP 体积接近上限，剩余图片未加入：%s", path.name)
-                break
-            zf.write(path, arcname=f"{arc_prefix}{path.name}" if arc_prefix else path.name)
-            total += size
+        _write_zip_entries(zf, paths, arc_prefix)
     return out_path
+
+
+def _write_zip_entries(zf, paths: list[Path], arc_prefix: str) -> None:
+    total = 0
+    for path in paths:
+        size = path.stat().st_size
+        # ZIP32 单文件 / 总量限制
+        if total + size > 3_800_000_000:
+            logger.warning("ZIP 体积接近上限，剩余图片未加入：%s", path.name)
+            break
+        zf.write(path, arcname=f"{arc_prefix}{path.name}" if arc_prefix else path.name)
+        total += size
+
+
+def encrypt_pdf_file(path: Path, password: str) -> Path:
+    """用 pypdf 给 PDF 加打开密码（AES-128，原地替换）。"""
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(str(path))
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    try:
+        writer.encrypt(password, algorithm="AES-128")
+    except TypeError:  # 老版本 pypdf 不支持 algorithm 参数
+        writer.encrypt(password)
+    tmp_path = path.with_suffix(".enc.pdf")
+    with open(tmp_path, "wb") as fh:
+        writer.write(fh)
+    tmp_path.replace(path)
+    return path
 
 
 # ----------------------------------------------------------------------
 # PDF
 # ----------------------------------------------------------------------
-def pdf_from_images(paths: list[Path], out_path: Path, max_side: int = 1600) -> Path:
+def pdf_from_images(
+    paths: list[Path], out_path: Path, max_side: int = 1600, password: str = ""
+) -> Path:
     """把图片合成为单个 PDF（最多 30 页，便于测试与小批量使用）。"""
-    return _pdf_chunk(list(paths[:30]), out_path, max_side)
+    out = _pdf_chunk(list(paths[:30]), out_path, max_side)
+    if password and pdf_encryption_available():
+        encrypt_pdf_file(out, password)
+    return out
 
 
 def pdf_from_images_parts(
@@ -86,8 +174,12 @@ def pdf_from_images_parts(
     stem: str,
     max_side: int = 1200,
     chunk_size: int = 30,
+    password: str = "",
 ) -> list[Path]:
     """分卷生成 PDF，避免几百页一次性载入内存导致 OOM。
+
+    Args:
+        password: 非空且 pypdf/cryptography 可用时，给每个 PDF 加打开密码。
 
     Returns:
         生成好的 PDF 路径列表（按页序）
@@ -103,6 +195,8 @@ def pdf_from_images_parts(
         suffix = f"_{index + 1}" if total > 1 else ""
         out_path = out_dir / f"{stem}{suffix}.pdf"
         _pdf_chunk(chunk, out_path, max_side)
+        if password and pdf_encryption_available():
+            encrypt_pdf_file(out_path, password)
         outputs.append(out_path)
     return outputs
 

@@ -39,10 +39,13 @@ from .core.formatter import (
 )
 from .core.packer import (
     long_image_from_images,
+    pdf_encryption_available,
     pdf_from_images_parts,
     pillow_available,
     prepare_for_send,
+    random_password,
     rank_collage,
+    zip_encryption_available,
     zip_images,
 )
 from .core.util import (
@@ -72,6 +75,7 @@ HELP_TEXT = """📚 哔咔漫画插件 · 指令一览
     · 章节：1 / 1-3 / 1,3,5 / 最新3 / all（默认最新 1 话）
     · 格式：图片（默认）/ zip / pdf / 长图
     · 目标：@别名 / @g群号 / @uQQ号，缺省发到当前会话
+    · 密码：末尾加 #密码（仅 zip/pdf 生效），如 3 1 zip #abcd12
 /bika 状态
     查看登录状态、线路、推送与缓存占用
 /bika 登录
@@ -819,11 +823,15 @@ class BikaPlugin(Star):
         fmt = str(self._cfg("pack_format", "图片"))
         target_alias = ""
         chapter_spec = ""
+        password_override = ""
 
         for arg in rest:
             low = arg.lower()
             if low.startswith("@"):
                 target_alias = arg[1:]
+            elif low.startswith("#") and len(arg) > 1:
+                # 临时密码：/bika 下载 3 1 zip #abcd1234
+                password_override = arg[1:]
             elif low in {f.lower() for f in PACK_FORMATS} or low in {"image", "images"}:
                 fmt = {
                     "image": "图片",
@@ -845,6 +853,30 @@ class BikaPlugin(Star):
                 [Comp.Plain("❌ 服务器未安装 Pillow，暂时无法生成该格式。")],
             )
             return
+
+        pack_password = self._resolve_pack_password(password_override)
+        if pack_password and fmt in {"图片", "长图"}:
+            await self._send(
+                event,
+                "",
+                [
+                    Comp.Plain(
+                        "ℹ️ 图片 / 长图是直接发送图片，无法加密码；如需加密请改用 zip 或 pdf 格式。"
+                    )
+                ],
+            )
+        if pack_password and fmt == "zip" and not zip_encryption_available():
+            await self._send(
+                event,
+                "",
+                [Comp.Plain("⚠️ 未安装 pyzipper，本次将发送未加密的 ZIP。")],
+            )
+        if pack_password and fmt == "pdf" and not pdf_encryption_available():
+            await self._send(
+                event,
+                "",
+                [Comp.Plain("⚠️ 当前环境无法加密 PDF，本次将发送未加密的 PDF。")],
+            )
 
         target = ""
         if target_alias:
@@ -886,6 +918,8 @@ class BikaPlugin(Star):
             f"章节：{'、'.join(str(e.get('order')) for e in selected)}\n"
             f"格式：{fmt}　线路：{client.api_base}"
         )
+        if pack_password and fmt in {"zip", "pdf"}:
+            start_text += "\n🔒 已启用密码保护，密码会随文件一起发送。"
         if fmt == "图片":
             estimated = self._estimate_images(comic, selected, max_images)
             batch = max(1, min(int(self._cfg("send_batch", 3)), 10))
@@ -901,13 +935,23 @@ class BikaPlugin(Star):
             await self._send(event, "", [Comp.Plain("❌ 下载失败，没有拿到任何图片。")])
             return
 
-        await self._deliver(event, client, comic, results, fmt, target)
+        await self._deliver(event, client, comic, results, fmt, target, pack_password)
         if target:
             await self._send(
                 event,
                 "",
                 [Comp.Plain(f"✅ 已推送到「{target_alias}」。")],
             )
+
+    def _resolve_pack_password(self, override: str = "") -> str:
+        """确定本次打包密码：指令 #密码 > 配置随机密码 > 配置固定密码。"""
+        override = (override or "").strip()
+        if override:
+            return override
+        if bool(self._cfg("pack_password_random", False)):
+            length = int(self._cfg("pack_password_length", 6))
+            return random_password(length)
+        return str(self._cfg("pack_password", "") or "").strip()
 
     @staticmethod
     def _estimate_images(comic: dict, selected: list[dict], limit: int) -> int:
@@ -1073,6 +1117,7 @@ class BikaPlugin(Star):
         results: list[ChapterResult],
         fmt: str,
         target: str,
+        password: str = "",
     ) -> None:
         comic_id = str(comic.get("_id") or "")
         title = comic_title(comic)
@@ -1097,13 +1142,23 @@ class BikaPlugin(Star):
 
         try:
             if fmt == "zip":
+                zip_pwd = password if zip_encryption_available() else ""
+                note = ""
+                if zip_pwd:
+                    note = (
+                        f"\n🔒 解压密码：{zip_pwd}"
+                        if bool(self._cfg("pack_password_notify", True))
+                        else "\n🔒 已加密（密码未在消息中提示）"
+                    )
                 for result in results:
-                    out = self.pack_dir / f"{safe_filename(title)}_{result.order:03d}.zip"
+                    stem = f"{safe_filename(title)}_{result.order:03d}"
+                    out = self.pack_dir / f"{stem}.zip"
                     await asyncio.to_thread(
                         zip_images,
                         result.images,
                         out,
-                        f"{safe_filename(title)}_{result.order:03d}/",
+                        f"{stem}/",
+                        zip_pwd,
                     )
                     size = out.stat().st_size
                     if size > max_send_mb * 1024 * 1024:
@@ -1120,7 +1175,7 @@ class BikaPlugin(Star):
                         continue
                     await send(
                         [
-                            Comp.Plain(f"📦 {title} · 第 {result.order} 话"),
+                            Comp.Plain(f"📦 {title} · 第 {result.order} 话{note}"),
                             Comp.File(name=out.name, file=str(out)),
                         ]
                     )
@@ -1128,6 +1183,14 @@ class BikaPlugin(Star):
                         break
 
             elif fmt == "pdf":
+                pdf_pwd = password if pdf_encryption_available() else ""
+                note = ""
+                if pdf_pwd:
+                    note = (
+                        f"\n🔒 打开密码：{pdf_pwd}"
+                        if bool(self._cfg("pack_password_notify", True))
+                        else "\n🔒 已加密（密码未在消息中提示）"
+                    )
                 for result in results:
                     stem = f"{safe_filename(title)}_{result.order:03d}"
                     outs = await asyncio.to_thread(
@@ -1135,6 +1198,9 @@ class BikaPlugin(Star):
                         result.images,
                         self.pack_dir,
                         stem,
+                        1200,
+                        30,
+                        pdf_pwd,
                     )
                     for part_index, out in enumerate(outs, start=1):
                         size = out.stat().st_size
@@ -1153,7 +1219,7 @@ class BikaPlugin(Star):
                         part = f"（{part_index}/{len(outs)}）" if len(outs) > 1 else ""
                         await send(
                             [
-                                Comp.Plain(f"📄 {title} · 第 {result.order} 话{part}"),
+                                Comp.Plain(f"📄 {title} · 第 {result.order} 话{part}{note}"),
                                 Comp.File(name=out.name, file=str(out)),
                             ]
                         )
