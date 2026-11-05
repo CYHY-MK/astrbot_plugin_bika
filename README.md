@@ -13,7 +13,8 @@
 - 🔍 **搜索**：关键词搜索，支持翻页
 - 📖 **详情 / 📚 章节**：作者、分类、标签、页数、章节列表
 - ⬇️ **下载**：按话下载（`1` / `1-3` / `最新3` / `all`），发送到群聊或私聊
-- 📦 **打包**：逐张图片 / ZIP / PDF / 长图
+- 📦 **打包**：逐张图片 / ZIP / PDF / 长图 / 合并聊天记录
+- 🔁 **失败回退**：首选格式一条都发不出去时，按配置顺序自动换下一种
 - 🔒 **加密**：ZIP（AES-256）/ PDF（打开密码），密码随消息提示
 - 💗 **收藏**：收藏 / 取消收藏、收藏夹翻页
 - ✅ **签到**：每日签到
@@ -36,7 +37,11 @@
 | `proxy` | 空 | 代理，如 `http://127.0.0.1:7897` |
 | `image_host` | 镜像 | 图片域名换成镜像线路，大陆更稳 |
 | `image_quality` | `medium` | `medium` / `original` / `low` |
-| `pack_format` | 图片 | 图片 / zip / pdf / 长图 |
+| `pack_format` | 图片 | 图片 / zip / pdf / 长图 / 合并 |
+| `pack_fallback` | `["合并","zip"]` | 首选失败时的回退顺序 |
+| `forward_name` | 漫画分享 | 合并转发显示的昵称 |
+| `forward_images_per_node` / `forward_nodes_per_msg` | 3 / 5 | 合并转发的分片粒度 |
+| `forward_image_mb` | 1 | 合并转发单图上限（base64 会膨胀） |
 | `pack_password` | 空 | 非空时 ZIP 加密 / PDF 加打开密码 |
 | `pack_password_random` / `pack_password_length` | 关 / 6 | 每个文件随机密码 |
 | `pack_password_notify` | 开 | 在消息里提示密码 |
@@ -72,8 +77,18 @@
 /bika 分区 長篇 最多爱心 2
 /bika 详情 3
 /bika 下载 3 1-2 zip
-/bika 下载 3 1 zip #abcd12     ← 临时密码
+/bika 下载 3 1 合并              ← 合并聊天记录（规避发图风控）
+/bika 下载 3 1 zip #abcd12       ← 临时密码
 ```
+
+**发送优先级**：先用指令指定的格式（没指定就用 `pack_format`），
+如果**一条都没发出去**，按 `pack_fallback` 顺序自动换下一种并提示，例如：
+
+```
+图片（首选）→ 合并 → zip
+```
+
+部分成功（已发出若干条后失败）不会回退，避免重复刷屏。
 
 **加密说明**：`pack_password` 非空（或指令末尾加 `#密码`）时，
 ZIP 使用 AES-256 加密（需要 7-Zip / WinRAR / Bandizip 等支持 AES 的解压工具打开），

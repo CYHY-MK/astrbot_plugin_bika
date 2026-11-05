@@ -87,7 +87,7 @@ AUTH_ERROR_CODES = {"401", "1005", "1008"}
 IMAGE_QUALITIES = ("original", "medium", "low")
 
 # ---- 下载 / 打包 ----
-PACK_FORMATS = ("图片", "zip", "pdf", "长图")
+PACK_FORMATS = ("图片", "zip", "pdf", "长图", "合并")
 
 # ---- 分页 ----
 EPS_PAGE_LIMIT = 40

@@ -44,9 +44,40 @@
     "description": "默认发送格式",
     "type": "string",
     "default": "图片",
-    "options": ["图片", "zip", "pdf", "长图"],
-    "labels": ["逐张图片", "ZIP 压缩包", "PDF", "长图"],
+    "options": ["图片", "zip", "pdf", "长图", "合并"],
+    "labels": ["逐张图片", "ZIP 压缩包", "PDF", "长图", "合并聊天记录"],
     "hint": "可在指令中用最后一个参数临时覆盖"
+  },
+  "pack_fallback": {
+    "description": "失败回退格式",
+    "type": "list",
+    "default": ["合并", "zip"],
+    "hint": "首选格式一条都没发出去时，按顺序尝试这些格式。例如 [\"合并\",\"zip\",\"图片\"]；合并=合并聊天记录（规避发图风控）"
+  },
+  "forward_name": {
+    "description": "合并转发显示昵称",
+    "type": "string",
+    "default": "漫画分享",
+    "hint": "合并聊天记录里每条消息的发送者昵称"
+  },
+  "forward_images_per_node": {
+    "description": "每个节点图片数",
+    "type": "int",
+    "default": 3,
+    "slider": {"min": 1, "max": 10, "step": 1}
+  },
+  "forward_nodes_per_msg": {
+    "description": "每条转发消息节点数",
+    "type": "int",
+    "default": 5,
+    "slider": {"min": 1, "max": 20, "step": 1},
+    "hint": "越大单条转发包含的图越多，但消息体也越大"
+  },
+  "forward_image_mb": {
+    "description": "合并转发单图上限（MB）",
+    "type": "int",
+    "default": 1,
+    "hint": "转发消息会把图片转成 base64，单图过大容易发送失败，建议 1MB 左右"
   },
   "pack_password": {
     "description": "打包密码",
