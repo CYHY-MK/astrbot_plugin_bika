@@ -77,7 +77,7 @@ HELP_TEXT = """📚 哔咔漫画插件 · 指令一览
     · 格式：图片（默认）/ zip / pdf / 长图 / 合并
     · 目标：@别名 / @g群号 / @uQQ号，缺省发到当前会话
     · 密码：末尾加 #密码（仅 zip/pdf 生效），如 3 1 zip #abcd12
-    · 发送失败会按 pack_fallback 自动回退下一种格式
+    · 发送失败会按「发送优先级」换下一种格式，继续发剩余章节
 /bika 状态
     查看登录状态、线路、推送与缓存占用
 /bika 登录
@@ -332,9 +332,10 @@ class BikaPlugin(Star):
         else:
             await event.send(MessageChain(chain=chain))
 
-    async def _throttle(self) -> None:
+    async def _throttle(self, min_interval: float | None = None) -> None:
         """两次发送之间保持最小间隔，降低被 QQ 风控/限流的概率。"""
-        interval = float(self._cfg("send_interval", 1.2) or 0)
+        base = float(self._cfg("send_interval", 1.2) or 0)
+        interval = max(base, float(min_interval or 0))
         if interval <= 0:
             return
         delta = time.monotonic() - self._last_send_at
@@ -350,16 +351,21 @@ class BikaPlugin(Star):
         *,
         retries: int = 1,
         allow_text_fallback: bool = True,
+        min_interval: float | None = None,
     ) -> bool:
         """发送消息链，失败自动重试；图片/文件发不出去时退化为纯文本。
 
         QQ 侧偶发 ``retcode=100 / 未返回消息回执``（多为频率限制或图片被拦），
         这里全部吞掉并记录日志，避免一条消息失败导致整个下载任务中断。
 
+        Args:
+            min_interval: 本条消息的最小发送间隔（文件/合并转发传入更大的值）。
+
         Returns:
             是否发送成功（含降级成功）
         """
-        await self._throttle()
+        await self._throttle(min_interval)
+        retry_delay = max(1.0, float(self._cfg("retry_delay", 3.0) or 3.0))
         for attempt in range(max(0, retries) + 1):
             try:
                 await self._send_raw(event, target, chain)
@@ -375,7 +381,7 @@ class BikaPlugin(Star):
                     exc,
                 )
                 if attempt < retries:
-                    await asyncio.sleep(2.0 + attempt)
+                    await asyncio.sleep(retry_delay * (attempt + 1))
 
         # 多图消息容易在 QQ 侧失败：拆成单图再试一次
         images = [item for item in chain if isinstance(item, Comp.Image)]
@@ -389,6 +395,7 @@ class BikaPlugin(Star):
                         [image],
                         retries=0,
                         allow_text_fallback=False,
+                        min_interval=min_interval,
                     )
                     or ok_any
                 )
@@ -397,7 +404,9 @@ class BikaPlugin(Star):
                 return True
 
         # 降级：只发文字，至少让用户看到结果
-        has_media = any(isinstance(item, (Comp.Image, Comp.File)) for item in chain)
+        has_media = any(
+            isinstance(item, (Comp.Image, Comp.File, Comp.Node, Comp.Nodes)) for item in chain
+        )
         texts = [
             item.text
             for item in chain
@@ -405,7 +414,7 @@ class BikaPlugin(Star):
         ]
         if allow_text_fallback and has_media and texts:
             try:
-                await self._throttle()
+                await self._throttle(min_interval)
                 await self._send_raw(event, target, [Comp.Plain("\n".join(texts))])
                 logger.info("哔咔消息已降级为纯文本发送")
                 return False
@@ -823,6 +832,7 @@ class BikaPlugin(Star):
         comic_id = self._resolve_comic_id(event, args[0])
         rest = args[1:]
         fmt = str(self._cfg("pack_format", "图片"))
+        fmt_explicit = False
         target_alias = ""
         chapter_spec = ""
         password_override = ""
@@ -851,11 +861,15 @@ class BikaPlugin(Star):
                     "forward": "合并",
                     "合并转发": "合并",
                 }.get(low, fmt)
+                fmt_explicit = True
             else:
                 chapter_spec = arg
 
-        if fmt not in PACK_FORMATS:
-            fmt = "图片"
+        # 发送优先级：没指定格式时直接按配置的优先级列表走；
+        # 指定格式时把它放到最前面，其余按列表顺序回退。
+        formats = self._format_chain(fmt if fmt_explicit else None)
+        fmt = formats[0]
+
         if fmt in {"pdf", "长图"} and not pillow_available():
             await self._send(
                 event,
@@ -941,37 +955,53 @@ class BikaPlugin(Star):
             await self._send(event, "", [Comp.Plain("❌ 下载失败，没有拿到任何图片。")])
             return
 
-        # 按优先级尝试发送格式：首选失败（一条都没发出去）就回退下一级
-        formats = self._format_chain(fmt)
-        stats: dict = {"sent": 0, "failed": 0, "skipped": 0, "aborted": False, "format": fmt}
-        used_fmt = fmt
+        # 按优先级依次尝试；已完整发送的章节会跳过，未完成的部分继续用下一种格式
+        formats = self._format_chain(fmt if fmt_explicit else None)
+        done_orders: set[int] = set()
+        failed_msgs = 0
+        used_fmt = formats[0]
+        remaining = list(results)
+
         for index, attempt_fmt in enumerate(formats):
+            if not remaining:
+                break
             if index > 0:
                 await self._send(
                     event,
                     "",
-                    [Comp.Plain(f"↩️ 「{formats[index - 1]}」发送失败，改用「{attempt_fmt}」重试…")],
+                    [
+                        Comp.Plain(
+                            f"↩️ 「{formats[index - 1]}」未全部发出，"
+                            f"改用「{attempt_fmt}」继续发送剩余部分…"
+                        )
+                    ],
                     retries=0,
                 )
             used_fmt = attempt_fmt
             stats = await self._deliver(
-                event, client, comic, results, attempt_fmt, target, pack_password
+                event, client, comic, remaining, attempt_fmt, target, pack_password
             )
-            if stats["sent"] > 0:
-                break
+            done_orders |= set(stats.get("done") or ())
+            failed_msgs += int(stats.get("failed") or 0)
+            remaining = [r for r in results if r.order not in done_orders]
 
         title = comic_title(comic)
         total = sum(len(r.images) for r in results)
-        if stats["sent"] == 0:
+        if not done_orders:
             summary = (
                 f"❌ 《{title}》发送失败：已尝试 {'、'.join(formats)} 均未成功。\n"
                 f"🆔 {comic_id}\n"
                 "图片已缓存，可稍后重发，或检查 QQ 上传通道 / 风控。"
             )
-        elif stats["failed"]:
+        elif remaining:
             summary = (
-                f"⚠️ 《{title}》部分消息发送失败（{used_fmt}：成功 {stats['sent']} 条 / "
-                f"失败 {stats['failed']} 条）\n"
+                f"⚠️ 《{title}》部分章节未发出（已完成 {len(done_orders)}/{len(results)} 话，"
+                f"最后尝试：{used_fmt}）\n"
+                f"🆔 {comic_id}"
+            )
+        elif failed_msgs:
+            summary = (
+                f"⚠️ 《{title}》已发出，期间有 {failed_msgs} 条消息失败后由后续格式补发\n"
                 f"🆔 {comic_id}"
             )
         else:
@@ -988,16 +1018,22 @@ class BikaPlugin(Star):
                 [Comp.Plain(f"✅ 已推送到「{target_alias}」。")],
             )
 
-    def _format_chain(self, primary: str) -> list[str]:
-        """构造发送格式链：首选格式 + 配置的回退格式（去重保序）。"""
-        chain = [primary] if primary in PACK_FORMATS else ["图片"]
-        fallback = self._cfg("pack_fallback", []) or []
-        if isinstance(fallback, str):
-            fallback = [fallback]
-        for item in fallback:
-            name = str(item).strip()
-            if name in PACK_FORMATS and name not in chain:
-                chain.append(name)
+    def _format_chain(self, requested: str | None) -> list[str]:
+        """构造发送格式链。
+
+        - 未指定格式：直接使用配置 ``pack_fallback`` 的顺序（即"选项排序"）；
+        - 指定了格式：该格式排第一，后面接 ``pack_fallback`` 的其余项。
+        列表为空时退回 ``pack_format``。
+        """
+        priority = self._cfg("pack_fallback", []) or []
+        if isinstance(priority, str):
+            priority = [priority]
+        chain = [str(item).strip() for item in priority if str(item).strip() in PACK_FORMATS]
+        if not chain:
+            fallback_fmt = str(self._cfg("pack_format", "图片"))
+            chain = [fallback_fmt if fallback_fmt in PACK_FORMATS else "图片"]
+        if requested and requested in PACK_FORMATS:
+            chain = [requested] + [item for item in chain if item != requested]
         return chain
 
     def _file_stem(self, title: str, order: int, comic_id: str) -> str:
@@ -1196,12 +1232,31 @@ class BikaPlugin(Star):
         comic_id = str(comic.get("_id") or "")
         title = comic_title(comic)
         max_send_mb = int(self._cfg("max_send_mb", 50))
-        stats = {"sent": 0, "failed": 0, "skipped": 0, "streak": 0, "aborted": False}
+        upload_iv = float(self._cfg("upload_interval", 3.0) or 0)
+        forward_iv = float(self._cfg("forward_interval", 5.0) or 0)
+        stats = {
+            "sent": 0,
+            "failed": 0,
+            "skipped": 0,
+            "streak": 0,
+            "aborted": False,
+            "done": set(),
+        }
 
-        async def send(chain: list, retries: int = 1, fallback: bool = True) -> bool:
+        async def send(
+            chain: list,
+            retries: int = 1,
+            fallback: bool = True,
+            interval: float | None = None,
+        ) -> bool:
             """发送并累计成功/失败次数，连续失败时标记中止。"""
             ok = await self._send(
-                event, target, chain, retries=retries, allow_text_fallback=fallback
+                event,
+                target,
+                chain,
+                retries=retries,
+                allow_text_fallback=fallback,
+                min_interval=interval,
             )
             if ok:
                 stats["sent"] += 1
@@ -1235,6 +1290,7 @@ class BikaPlugin(Star):
                     )
                     size = out.stat().st_size
                     if size > max_send_mb * 1024 * 1024:
+                        stats["skipped"] += 1
                         await self._send(
                             event,
                             target,
@@ -1246,12 +1302,14 @@ class BikaPlugin(Star):
                             ],
                         )
                         continue
-                    await send(
+                    if await send(
                         [
                             Comp.Plain(f"📦 {title} · 第 {result.order} 话{note}"),
                             Comp.File(name=out.name, file=str(out)),
-                        ]
-                    )
+                        ],
+                        interval=upload_iv,
+                    ):
+                        stats["done"].add(result.order)
                     if stats["aborted"]:
                         break
 
@@ -1275,9 +1333,11 @@ class BikaPlugin(Star):
                         30,
                         pdf_pwd,
                     )
+                    chapter_ok = True
                     for part_index, out in enumerate(outs, start=1):
                         size = out.stat().st_size
                         if size > max_send_mb * 1024 * 1024:
+                            stats["skipped"] += 1
                             await self._send(
                                 event,
                                 target,
@@ -1290,14 +1350,18 @@ class BikaPlugin(Star):
                             )
                             continue
                         part = f"（{part_index}/{len(outs)}）" if len(outs) > 1 else ""
-                        await send(
+                        ok = await send(
                             [
                                 Comp.Plain(f"📄 {title} · 第 {result.order} 话{part}{note}"),
                                 Comp.File(name=out.name, file=str(out)),
-                            ]
+                            ],
+                            interval=upload_iv,
                         )
+                        chapter_ok = chapter_ok and ok
                         if stats["aborted"]:
                             break
+                    if chapter_ok:
+                        stats["done"].add(result.order)
                     if stats["aborted"]:
                         break
 
@@ -1310,23 +1374,30 @@ class BikaPlugin(Star):
                         self.pack_dir,
                         stem,
                     )
+                    chapter_ok = True
                     for out in outs:
                         size = out.stat().st_size
                         if size > max_send_mb * 1024 * 1024:
                             out = prepare_for_send(out, max_send_mb * 1024 * 1024, 1200)
-                        await send(
-                            [
-                                Comp.Plain(f"🖼️ {title} · 第 {result.order} 话"),
-                                Comp.Image.fromFileSystem(str(out)),
-                            ]
+                        chapter_ok = (
+                            await send(
+                                [
+                                    Comp.Plain(f"🖼️ {title} · 第 {result.order} 话"),
+                                    Comp.Image.fromFileSystem(str(out)),
+                                ],
+                                interval=upload_iv,
+                            )
+                            and chapter_ok
                         )
                         if stats["aborted"]:
                             break
+                    if chapter_ok:
+                        stats["done"].add(result.order)
                     if stats["aborted"]:
                         break
 
             elif fmt == "合并":
-                await self._deliver_forward(event, title, results, stats, send)
+                await self._deliver_forward(event, title, results, stats, send, forward_iv)
 
             else:  # 逐张图片
                 batch = max(1, min(int(self._cfg("send_batch", 5)), 10))
@@ -1340,6 +1411,7 @@ class BikaPlugin(Star):
                             )
                         ]
                     )
+                    chapter_ok = True
                     for index in range(0, len(result.images), batch):
                         if stats["aborted"]:
                             break
@@ -1352,7 +1424,9 @@ class BikaPlugin(Star):
                                 else path
                             )
                             chain.append(Comp.Image.fromFileSystem(str(send_path)))
-                        await send(chain)
+                        chapter_ok = await send(chain) and chapter_ok
+                    if chapter_ok:
+                        stats["done"].add(result.order)
                     if stats["aborted"]:
                         break
         except Exception as exc:
@@ -1375,6 +1449,7 @@ class BikaPlugin(Star):
         results: list[ChapterResult],
         stats: dict,
         send,
+        interval: float = 5.0,
     ) -> None:
         """合并聊天记录（OneBot v11 合并转发）发送。
 
@@ -1383,8 +1458,8 @@ class BikaPlugin(Star):
         """
         self_id = str(event.get_self_id() or "0")
         name = (str(self._cfg("forward_name", "漫画分享")) or "漫画分享")[:12]
-        per_node = max(1, min(int(self._cfg("forward_images_per_node", 3)), 10))
-        nodes_per_msg = max(1, min(int(self._cfg("forward_nodes_per_msg", 5)), 20))
+        per_node = max(1, min(int(self._cfg("forward_images_per_node", 2)), 10))
+        nodes_per_msg = max(1, min(int(self._cfg("forward_nodes_per_msg", 3)), 20))
         max_bytes = max(256 * 1024, int(self._cfg("forward_image_mb", 1)) * 1024 * 1024)
 
         for result in results:
@@ -1403,11 +1478,14 @@ class BikaPlugin(Star):
                     content.append(Comp.Image.fromFileSystem(str(send_path)))
                 nodes.append(Comp.Node(content=content, name=name, uin=self_id))
 
+            chapter_ok = True
             for index in range(0, len(nodes), nodes_per_msg):
                 if stats["aborted"]:
                     break
                 batch = nodes[index : index + nodes_per_msg]
-                await send([Comp.Nodes(batch)])
+                chapter_ok = await send([Comp.Nodes(batch)], interval=interval) and chapter_ok
+            if chapter_ok:
+                stats["done"].add(result.order)
             if stats["aborted"]:
                 break
 

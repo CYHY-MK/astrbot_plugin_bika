@@ -46,13 +46,13 @@
     "default": "图片",
     "options": ["图片", "zip", "pdf", "长图", "合并"],
     "labels": ["逐张图片", "ZIP 压缩包", "PDF", "长图", "合并聊天记录"],
-    "hint": "可在指令中用最后一个参数临时覆盖"
+    "hint": "仅当「发送优先级」为空时作为默认；指令里指定格式会临时覆盖"
   },
   "pack_fallback": {
-    "description": "失败回退格式",
+    "description": "发送优先级（按顺序尝试）",
     "type": "list",
-    "default": ["合并", "zip"],
-    "hint": "首选格式一条都没发出去时，按顺序尝试这些格式。例如 [\"合并\",\"zip\",\"图片\"]；合并=合并聊天记录（规避发图风控）"
+    "default": ["合并", "zip", "图片"],
+    "hint": "列表顺序就是发送顺序：一种格式没发完就自动用下一种继续发剩余章节。可选：合并 / zip / pdf / 长图 / 图片"
   },
   "forward_name": {
     "description": "合并转发显示昵称",
@@ -63,21 +63,39 @@
   "forward_images_per_node": {
     "description": "每个节点图片数",
     "type": "int",
-    "default": 3,
+    "default": 2,
     "slider": {"min": 1, "max": 10, "step": 1}
   },
   "forward_nodes_per_msg": {
     "description": "每条转发消息节点数",
     "type": "int",
-    "default": 5,
+    "default": 3,
     "slider": {"min": 1, "max": 20, "step": 1},
-    "hint": "越大单条转发包含的图越多，但消息体也越大"
+    "hint": "越大单条转发包含的图越多，但消息体也越大、越容易被限流"
   },
   "forward_image_mb": {
     "description": "合并转发单图上限（MB）",
     "type": "int",
     "default": 1,
     "hint": "转发消息会把图片转成 base64，单图过大容易发送失败，建议 1MB 左右"
+  },
+  "forward_interval": {
+    "description": "合并转发间隔（秒）",
+    "type": "float",
+    "default": 5.0,
+    "hint": "两条合并转发之间的最小间隔。出现「未返回消息回执」时调大到 8~10 秒"
+  },
+  "upload_interval": {
+    "description": "文件上传间隔（秒）",
+    "type": "float",
+    "default": 3.0,
+    "hint": "两个文件（zip/pdf/长图）之间的最小间隔，降低上传风控概率"
+  },
+  "retry_delay": {
+    "description": "失败重试等待（秒）",
+    "type": "float",
+    "default": 3.0,
+    "hint": "发送失败后第 N 次重试等待 N×该值"
   },
   "pack_password": {
     "description": "打包密码",

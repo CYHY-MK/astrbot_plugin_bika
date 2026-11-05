@@ -14,7 +14,7 @@
 - 📖 **详情 / 📚 章节**：作者、分类、标签、页数、章节列表
 - ⬇️ **下载**：按话下载（`1` / `1-3` / `最新3` / `all`），发送到群聊或私聊
 - 📦 **打包**：逐张图片 / ZIP / PDF / 长图 / 合并聊天记录
-- 🔁 **失败回退**：首选格式一条都发不出去时，按配置顺序自动换下一种
+- 🔁 **失败回退**：按「发送优先级」依次尝试，没发完的部分自动换下一种继续
 - 🔒 **加密**：ZIP（AES-256）/ PDF（打开密码），密码随消息提示
 - 💗 **收藏**：收藏 / 取消收藏、收藏夹翻页
 - ✅ **签到**：每日签到
@@ -37,11 +37,14 @@
 | `proxy` | 空 | 代理，如 `http://127.0.0.1:7897` |
 | `image_host` | 镜像 | 图片域名换成镜像线路，大陆更稳 |
 | `image_quality` | `medium` | `medium` / `original` / `low` |
-| `pack_format` | 图片 | 图片 / zip / pdf / 长图 / 合并 |
-| `pack_fallback` | `["合并","zip"]` | 首选失败时的回退顺序 |
+| `pack_format` | 图片 | 优先级为空时的默认格式 |
+| `pack_fallback` | `["合并","zip","图片"]` | **发送优先级列表**，顺序即尝试顺序 |
 | `forward_name` | 漫画分享 | 合并转发显示的昵称 |
-| `forward_images_per_node` / `forward_nodes_per_msg` | 3 / 5 | 合并转发的分片粒度 |
+| `forward_images_per_node` / `forward_nodes_per_msg` | 2 / 3 | 合并转发的分片粒度 |
 | `forward_image_mb` | 1 | 合并转发单图上限（base64 会膨胀） |
+| `forward_interval` | 5 | 两条合并转发的最小间隔（秒） |
+| `upload_interval` | 3 | 两个文件上传的最小间隔（秒） |
+| `retry_delay` | 3 | 失败重试等待（第 N 次 = N × 该值） |
 | `pack_password` | 空 | 非空时 ZIP 加密 / PDF 加打开密码 |
 | `pack_password_random` / `pack_password_length` | 关 / 6 | 每个文件随机密码 |
 | `pack_password_notify` | 开 | 在消息里提示密码 |
@@ -81,14 +84,18 @@
 /bika 下载 3 1 zip #abcd12       ← 临时密码
 ```
 
-**发送优先级**：先用指令指定的格式（没指定就用 `pack_format`），
-如果**一条都没发出去**，按 `pack_fallback` 顺序自动换下一种并提示，例如：
+**发送优先级**：`pack_fallback` 的**列表顺序就是发送顺序**（例如 `合并 → zip → 图片`）；
+指令里指定格式时该格式排最前。某一级没发完就自动换下一级，**只补发剩余章节**，
+并提示「改用 xxx 继续发送剩余部分」。
 
-```
-图片（首选）→ 合并 → zip
-```
+发送/上传之间有独立间隔阈值，避免触发 QQ 限流：
 
-部分成功（已发出若干条后失败）不会回退，避免重复刷屏。
+| 配置 | 默认 | 作用 |
+| --- | --- | --- |
+| `send_interval` | 1.2s | 普通消息（文本/图片）间隔 |
+| `upload_interval` | 3s | 文件（zip/pdf/长图）上传间隔 |
+| `forward_interval` | 5s | 合并转发消息间隔 |
+| `retry_delay` | 3s | 失败重试等待（第 N 次 = N×该值） |
 
 **加密说明**：`pack_password` 非空（或指令末尾加 `#密码`）时，
 ZIP 使用 AES-256 加密（需要 7-Zip / WinRAR / Bandizip 等支持 AES 的解压工具打开），
