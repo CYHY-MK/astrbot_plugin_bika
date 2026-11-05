@@ -19,6 +19,7 @@ import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import ClassVar
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
@@ -1018,22 +1019,53 @@ class BikaPlugin(Star):
                 [Comp.Plain(f"✅ 已推送到「{target_alias}」。")],
             )
 
+    # 配置/指令里的格式别名（大小写不敏感，兼容用户手写 PDF/ZIP）
+    _FORMAT_ALIASES: ClassVar[dict[str, str]] = {
+        "image": "图片",
+        "images": "图片",
+        "图片": "图片",
+        "zip": "zip",
+        "压缩包": "zip",
+        "pdf": "pdf",
+        "长图": "长图",
+        "long": "长图",
+        "合并": "合并",
+        "合并转发": "合并",
+        "forward": "合并",
+        "node": "合并",
+        "nodes": "合并",
+    }
+
+    @classmethod
+    def _normalize_format(cls, name) -> str | None:
+        """把用户写的格式名规范成 PACK_FORMATS 里的值。"""
+        text = str(name or "").strip()
+        if not text:
+            return None
+        return cls._FORMAT_ALIASES.get(text.lower()) or cls._FORMAT_ALIASES.get(text)
+
     def _format_chain(self, requested: str | None) -> list[str]:
         """构造发送格式链。
 
         - 未指定格式：直接使用配置 ``pack_fallback`` 的顺序（即"选项排序"）；
         - 指定了格式：该格式排第一，后面接 ``pack_fallback`` 的其余项。
-        列表为空时退回 ``pack_format``。
+        列表为空时退回 ``pack_format``。格式名大小写不敏感。
         """
         priority = self._cfg("pack_fallback", []) or []
         if isinstance(priority, str):
             priority = [priority]
-        chain = [str(item).strip() for item in priority if str(item).strip() in PACK_FORMATS]
+
+        chain: list[str] = []
+        for item in priority:
+            name = self._normalize_format(item)
+            if name and name not in chain:
+                chain.append(name)
         if not chain:
-            fallback_fmt = str(self._cfg("pack_format", "图片"))
-            chain = [fallback_fmt if fallback_fmt in PACK_FORMATS else "图片"]
-        if requested and requested in PACK_FORMATS:
-            chain = [requested] + [item for item in chain if item != requested]
+            chain = [self._normalize_format(self._cfg("pack_format", "图片")) or "图片"]
+
+        name = self._normalize_format(requested)
+        if name:
+            chain = [name] + [item for item in chain if item != name]
         return chain
 
     def _file_stem(self, title: str, order: int, comic_id: str) -> str:
