@@ -80,6 +80,12 @@
     "slider": {"min": 1, "max": 10, "step": 1},
     "hint": "逐张图片模式下，一条消息里包含几张图片；QQ 风控严时建议 1~3"
   },
+  "safe_filenames": {
+    "description": "上传文件名脱敏",
+    "type": "bool",
+    "default": true,
+    "hint": "用 bika_001_xxxx.zip 这类中性文件名上传，标题只在消息文字里显示。QQ 群文件会按文件名做关键词风控（如日文「中出し調教」会直接 -134），建议保持开启。"
+  },
   "send_interval": {
     "description": "消息发送间隔（秒）",
     "type": "float",

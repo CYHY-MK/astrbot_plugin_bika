@@ -40,6 +40,7 @@
 | `pack_password` | 空 | 非空时 ZIP 加密 / PDF 加打开密码 |
 | `pack_password_random` / `pack_password_length` | 关 / 6 | 每个文件随机密码 |
 | `pack_password_notify` | 开 | 在消息里提示密码 |
+| `safe_filenames` | 开 | 上传文件名脱敏为 `bika_001_xxxx.zip`，规避 QQ 文件名关键词风控 |
 | `send_batch` / `send_interval` | 3 / 1.2 | 发送节流，降低 QQ 风控 |
 | `push_targets` | `[]` | 定时推送目标，格式 `别名=unified_msg_origin` |
 | `push_daily_*` / `push_weekly_*` / `push_monthly_*` | 开 / 09:00 | 日/周/月榜推送开关与时间 |
@@ -84,6 +85,11 @@ PDF 加打开密码；密码会随文件消息一起提示。图片 / 长图无�
 1. 改用 `zip` 并设置密码（加密后内容不可扫描，成功率更高）；
 2. 调小 `max_send_mb`、把大文件拆成多话分批发送；
 3. 重试一次；仍失败则检查 NapCat / QQ 版本与网络。
+
+**关于 QQ 文件名风控（重要）**：QQ 群文件会按**文件名**做关键词过滤，
+命中色情关键词（例如日文 `中出し調教`）会直接返回 `-134 文件上传失败`。
+插件默认 `safe_filenames=true`，上传时使用 `bika_001_<hash>.zip` 这类中性文件名，
+标题只保留在消息文字里；如果关掉该选项，带敏感词的标题会原样作为文件名，可能被 QQ 拒绝。
 
 ## 说明
 

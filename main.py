@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import time
@@ -943,6 +944,17 @@ class BikaPlugin(Star):
                 [Comp.Plain(f"✅ 已推送到「{target_alias}」。")],
             )
 
+    def _file_stem(self, title: str, order: int, comic_id: str) -> str:
+        """生成上传用文件名前缀。
+
+        QQ 群文件会对**文件名**做关键词风控（命中色情词直接 -134 上传失败），
+        所以默认用中性名，标题只保留在消息文字里。
+        """
+        if not bool(self._cfg("safe_filenames", True)):
+            return f"{safe_filename(title)}_{order:03d}"
+        digest = hashlib.md5(f"{comic_id}:{order}".encode("utf-8")).hexdigest()[:6]
+        return f"bika_{order:03d}_{digest}"
+
     def _resolve_pack_password(self, override: str = "") -> str:
         """确定本次打包密码：指令 #密码 > 配置随机密码 > 配置固定密码。"""
         override = (override or "").strip()
@@ -1151,7 +1163,7 @@ class BikaPlugin(Star):
                         else "\n🔒 已加密（密码未在消息中提示）"
                     )
                 for result in results:
-                    stem = f"{safe_filename(title)}_{result.order:03d}"
+                    stem = self._file_stem(title, result.order, comic_id)
                     out = self.pack_dir / f"{stem}.zip"
                     await asyncio.to_thread(
                         zip_images,
@@ -1192,7 +1204,7 @@ class BikaPlugin(Star):
                         else "\n🔒 已加密（密码未在消息中提示）"
                     )
                 for result in results:
-                    stem = f"{safe_filename(title)}_{result.order:03d}"
+                    stem = self._file_stem(title, result.order, comic_id)
                     outs = await asyncio.to_thread(
                         pdf_from_images_parts,
                         result.images,
